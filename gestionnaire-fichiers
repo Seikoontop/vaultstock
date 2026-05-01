@@ -1,0 +1,547 @@
+import { useState, useEffect, useRef, useCallback } from "react";
+
+const STORAGE_KEY = "vault_filesystem";
+
+const initialFS = {
+  id: "root",
+  name: "Mon Coffre-Fort",
+  type: "folder",
+  children: [],
+  createdAt: Date.now(),
+};
+
+function formatSize(bytes) {
+  if (!bytes) return "—";
+  if (bytes < 1024) return bytes + " o";
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " Ko";
+  return (bytes / (1024 * 1024)).toFixed(2) + " Mo";
+}
+
+function formatDate(ts) {
+  return new Date(ts).toLocaleDateString("fr-FR", {
+    day: "2-digit", month: "short", year: "numeric",
+  });
+}
+
+function findNode(node, path) {
+  if (path.length === 0) return node;
+  const next = node.children?.find((c) => c.id === path[0]);
+  if (!next) return null;
+  return findNode(next, path.slice(1));
+}
+
+function updateNode(node, path, updater) {
+  if (path.length === 0) return updater(node);
+  return {
+    ...node,
+    children: node.children.map((c) =>
+      c.id === path[0] ? updateNode(c, path.slice(1), updater) : c
+    ),
+  };
+}
+
+function deleteFromNode(node, path, targetId) {
+  if (path.length === 0) {
+    return { ...node, children: node.children.filter((c) => c.id !== targetId) };
+  }
+  return {
+    ...node,
+    children: node.children.map((c) =>
+      c.id === path[0] ? deleteFromNode(c, path.slice(1), targetId) : c
+    ),
+  };
+}
+
+const ICONS = {
+  folder: (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+      <path d="M2 5.5C2 4.67 2.67 4 3.5 4h4l2 2h7c.83 0 1.5.67 1.5 1.5v8c0 .83-.67 1.5-1.5 1.5h-13C2.67 17 2 16.33 2 15.5v-10z" fill="currentColor" opacity=".9"/>
+    </svg>
+  ),
+  file: (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+      <path d="M3 2h8l4 4v10a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.3" fill="none"/>
+      <path d="M11 2v4h4" stroke="currentColor" strokeWidth="1.3" fill="none"/>
+    </svg>
+  ),
+  pdf: (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+      <path d="M3 2h8l4 4v10a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1z" stroke="#e25f5f" strokeWidth="1.3" fill="none"/>
+      <text x="4" y="14" fontSize="5" fill="#e25f5f" fontWeight="700">PDF</text>
+    </svg>
+  ),
+  img: (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+      <rect x="2" y="3" width="14" height="12" rx="1.5" stroke="#7fb3e8" strokeWidth="1.3" fill="none"/>
+      <circle cx="6.5" cy="7" r="1.5" fill="#7fb3e8"/>
+      <path d="M2 13l4-4 3 3 2-2 5 5" stroke="#7fb3e8" strokeWidth="1.3" fill="none"/>
+    </svg>
+  ),
+  trash: (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+      <path d="M2 3.5h10M5.5 3.5V2.5h3v1M4 3.5l.7 8h4.6l.7-8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+    </svg>
+  ),
+  download: (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+      <path d="M7 2v7M4.5 6.5L7 9l2.5-2.5M2.5 11h9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+    </svg>
+  ),
+  back: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <path d="M10 4L6 8l4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+    </svg>
+  ),
+  plus: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+    </svg>
+  ),
+  upload: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <path d="M8 10V3M5 6l3-3 3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+      <path d="M2.5 12h11" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+    </svg>
+  ),
+  grid: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <rect x="2" y="2" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.2"/>
+      <rect x="9" y="2" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.2"/>
+      <rect x="2" y="9" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.2"/>
+      <rect x="9" y="9" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.2"/>
+    </svg>
+  ),
+  list: (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <path d="M5 4h9M5 8h9M5 12h9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+      <circle cx="2.5" cy="4" r="1" fill="currentColor"/>
+      <circle cx="2.5" cy="8" r="1" fill="currentColor"/>
+      <circle cx="2.5" cy="12" r="1" fill="currentColor"/>
+    </svg>
+  ),
+};
+
+function getFileIcon(name) {
+  const ext = name.split(".").pop().toLowerCase();
+  if (["jpg","jpeg","png","gif","svg","webp"].includes(ext)) return ICONS.img;
+  if (ext === "pdf") return ICONS.pdf;
+  return ICONS.file;
+}
+
+export default function App() {
+  const [fs, setFs] = useState(null);
+  const [path, setPath] = useState([]);
+  const [view, setView] = useState("grid");
+  const [newFolderName, setNewFolderName] = useState("");
+  const [showNewFolder, setShowNewFolder] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const [toast, setToast] = useState(null);
+  const fileInputRef = useRef();
+  const newFolderRef = useRef();
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await window.storage.get(STORAGE_KEY);
+        if (res?.value) {
+          setFs(JSON.parse(res.value));
+        } else {
+          setFs(initialFS);
+        }
+      } catch {
+        setFs(initialFS);
+      }
+    })();
+  }, []);
+
+  const save = useCallback(async (newFs) => {
+    try {
+      await window.storage.set(STORAGE_KEY, JSON.stringify(newFs));
+    } catch (e) {
+      showToast("Erreur de sauvegarde", "error");
+    }
+  }, []);
+
+  const showToast = (msg, type = "ok") => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 2500);
+  };
+
+  const currentNode = fs ? findNode(fs, path) : null;
+  const items = currentNode?.children ?? [];
+
+  const sortedItems = [...items].sort((a, b) => {
+    if (a.type === "folder" && b.type !== "folder") return -1;
+    if (a.type !== "folder" && b.type === "folder") return 1;
+    return a.name.localeCompare(b.name, "fr");
+  });
+
+  const breadcrumb = [{ id: "root", name: "Mon Coffre-Fort" }];
+  let cur = fs;
+  for (const id of path) {
+    const child = cur?.children?.find((c) => c.id === id);
+    if (child) { breadcrumb.push(child); cur = child; }
+  }
+
+  const createFolder = () => {
+    if (!newFolderName.trim()) return;
+    const id = "f_" + Date.now();
+    const newFs = updateNode(fs, path, (node) => ({
+      ...node,
+      children: [...(node.children || []), {
+        id, name: newFolderName.trim(), type: "folder",
+        children: [], createdAt: Date.now(),
+      }],
+    }));
+    setFs(newFs);
+    save(newFs);
+    setNewFolderName("");
+    setShowNewFolder(false);
+    showToast(`Dossier "${newFolderName.trim()}" créé`);
+  };
+
+  const uploadFiles = (fileList) => {
+    const files = Array.from(fileList);
+    let processed = 0;
+    const newItems = [];
+    files.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        newItems.push({
+          id: "fi_" + Date.now() + Math.random(),
+          name: file.name,
+          type: "file",
+          size: file.size,
+          mimeType: file.type,
+          data: e.target.result,
+          createdAt: Date.now(),
+        });
+        processed++;
+        if (processed === files.length) {
+          const newFs = updateNode(fs, path, (node) => ({
+            ...node,
+            children: [...(node.children || []), ...newItems],
+          }));
+          setFs(newFs);
+          save(newFs);
+          showToast(`${files.length} fichier(s) ajouté(s)`);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const deleteItem = (id) => {
+    const newFs = deleteFromNode(fs, path, id);
+    setFs(newFs);
+    save(newFs);
+    showToast("Élément supprimé", "warn");
+  };
+
+  const downloadFile = (item) => {
+    const a = document.createElement("a");
+    a.href = item.data;
+    a.download = item.name;
+    a.click();
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragging(false);
+    uploadFiles(e.dataTransfer.files);
+  };
+
+  if (!fs) {
+    return (
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"center", height:"100vh", background:"#0e1117", color:"#c8a96e", fontFamily:"'Courier New', monospace" }}>
+        Chargement du coffre-fort…
+      </div>
+    );
+  }
+
+  const totalFiles = (node) => {
+    let c = 0;
+    for (const ch of node.children || []) {
+      if (ch.type === "file") c++;
+      else c += totalFiles(ch);
+    }
+    return c;
+  };
+
+  const totalSize = (node) => {
+    let s = 0;
+    for (const ch of node.children || []) {
+      if (ch.type === "file") s += ch.size || 0;
+      else s += totalSize(ch);
+    }
+    return s;
+  };
+
+  return (
+    <div
+      style={{ minHeight:"100vh", background:"#0e1117", color:"#e8e0d0", fontFamily:"'Courier New', monospace", userSelect:"none" }}
+      onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={handleDrop}
+    >
+      {/* Header */}
+      <div style={{ background:"#141820", borderBottom:"1px solid #2a2f3d", padding:"16px 28px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:"14px" }}>
+          <div style={{ width:36, height:36, background:"#c8a96e", borderRadius:6, display:"flex", alignItems:"center", justifyContent:"center" }}>
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <rect x="2" y="5" width="16" height="12" rx="2" stroke="#0e1117" strokeWidth="1.5"/>
+              <path d="M6 5V4a2 2 0 012-2h4a2 2 0 012 2v1" stroke="#0e1117" strokeWidth="1.5"/>
+              <circle cx="10" cy="11" r="2" stroke="#0e1117" strokeWidth="1.3"/>
+              <path d="M10 13v2" stroke="#0e1117" strokeWidth="1.3" strokeLinecap="round"/>
+            </svg>
+          </div>
+          <div>
+            <div style={{ fontSize:15, fontWeight:700, color:"#c8a96e", letterSpacing:2, textTransform:"uppercase" }}>VaultDrive</div>
+            <div style={{ fontSize:11, color:"#5a6072", letterSpacing:1 }}>Gestionnaire de fichiers</div>
+          </div>
+        </div>
+        <div style={{ display:"flex", gap:20, fontSize:11, color:"#5a6072" }}>
+          <span>{totalFiles(fs)} fichier(s)</span>
+          <span>{formatSize(totalSize(fs))}</span>
+        </div>
+      </div>
+
+      <div style={{ display:"flex", height:"calc(100vh - 69px)" }}>
+        {/* Sidebar */}
+        <div style={{ width:220, background:"#0b0e14", borderRight:"1px solid #1e2330", padding:"20px 0", flexShrink:0 }}>
+          <div style={{ padding:"0 16px 8px", fontSize:10, color:"#3a4050", letterSpacing:2, textTransform:"uppercase" }}>Navigation</div>
+          <div
+            onClick={() => setPath([])}
+            style={{ padding:"8px 16px", cursor:"pointer", display:"flex", alignItems:"center", gap:10,
+              background: path.length === 0 ? "#1a1f2e" : "transparent",
+              borderLeft: path.length === 0 ? "2px solid #c8a96e" : "2px solid transparent",
+              color: path.length === 0 ? "#c8a96e" : "#8a9bb0", fontSize:13 }}
+          >
+            <span style={{ color: path.length === 0 ? "#c8a96e" : "#4a5568" }}>{ICONS.folder}</span>
+            Mon Coffre-Fort
+          </div>
+
+          <div style={{ padding:"20px 16px 8px", fontSize:10, color:"#3a4050", letterSpacing:2, textTransform:"uppercase" }}>Dossiers récents</div>
+          {(fs.children || []).filter(c => c.type === "folder").slice(0,5).map(f => (
+            <div
+              key={f.id}
+              onClick={() => setPath([f.id])}
+              style={{ padding:"7px 16px", cursor:"pointer", display:"flex", alignItems:"center", gap:10,
+                background: path[0] === f.id && path.length === 1 ? "#1a1f2e" : "transparent",
+                borderLeft: path[0] === f.id && path.length === 1 ? "2px solid #c8a96e" : "2px solid transparent",
+                color: "#8a9bb0", fontSize:12 }}
+            >
+              <span style={{ color:"#4a5568", fontSize:14 }}>›</span>
+              <span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{f.name}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Main */}
+        <div style={{ flex:1, overflow:"auto", padding:"24px 28px" }}>
+          {/* Toolbar */}
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20, gap:12, flexWrap:"wrap" }}>
+            {/* Breadcrumb */}
+            <div style={{ display:"flex", alignItems:"center", gap:4, flexWrap:"wrap" }}>
+              {breadcrumb.map((bc, i) => (
+                <span key={bc.id} style={{ display:"flex", alignItems:"center", gap:4 }}>
+                  {i > 0 && <span style={{ color:"#3a4050" }}>›</span>}
+                  <span
+                    onClick={() => setPath(path.slice(0, i))}
+                    style={{ cursor: i < breadcrumb.length - 1 ? "pointer" : "default",
+                      color: i < breadcrumb.length - 1 ? "#5a6880" : "#c8a96e",
+                      fontSize:13, letterSpacing:1 }}
+                  >{bc.name}</span>
+                </span>
+              ))}
+            </div>
+
+            {/* Actions */}
+            <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+              {path.length > 0 && (
+                <button onClick={() => setPath(path.slice(0,-1))}
+                  style={{ background:"transparent", border:"1px solid #2a3040", borderRadius:6, padding:"6px 10px",
+                    color:"#8a9bb0", cursor:"pointer", display:"flex", alignItems:"center", gap:6, fontSize:12 }}>
+                  {ICONS.back} Retour
+                </button>
+              )}
+              <button onClick={() => { setShowNewFolder(!showNewFolder); setTimeout(()=>newFolderRef.current?.focus(),50); }}
+                style={{ background:"transparent", border:"1px solid #2a3040", borderRadius:6, padding:"6px 10px",
+                  color:"#8a9bb0", cursor:"pointer", display:"flex", alignItems:"center", gap:6, fontSize:12 }}>
+                {ICONS.plus} Nouveau dossier
+              </button>
+              <button onClick={() => fileInputRef.current?.click()}
+                style={{ background:"#c8a96e", border:"none", borderRadius:6, padding:"6px 12px",
+                  color:"#0e1117", cursor:"pointer", display:"flex", alignItems:"center", gap:6, fontSize:12, fontWeight:700 }}>
+                {ICONS.upload} Importer
+              </button>
+              <div style={{ display:"flex", background:"#141820", borderRadius:6, border:"1px solid #2a3040", overflow:"hidden" }}>
+                {["grid","list"].map(v => (
+                  <button key={v} onClick={() => setView(v)}
+                    style={{ background: view === v ? "#1e2840" : "transparent", border:"none", padding:"6px 10px",
+                      color: view === v ? "#c8a96e" : "#5a6072", cursor:"pointer" }}>
+                    {v === "grid" ? ICONS.grid : ICONS.list}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* New folder input */}
+          {showNewFolder && (
+            <div style={{ marginBottom:16, display:"flex", gap:8 }}>
+              <input
+                ref={newFolderRef}
+                value={newFolderName}
+                onChange={e => setNewFolderName(e.target.value)}
+                onKeyDown={e => { if(e.key==="Enter") createFolder(); if(e.key==="Escape") setShowNewFolder(false); }}
+                placeholder="Nom du dossier…"
+                style={{ background:"#141820", border:"1px solid #c8a96e", borderRadius:6, padding:"8px 12px",
+                  color:"#e8e0d0", fontFamily:"inherit", fontSize:13, outline:"none", flex:1 }}
+              />
+              <button onClick={createFolder}
+                style={{ background:"#c8a96e", border:"none", borderRadius:6, padding:"8px 16px",
+                  color:"#0e1117", cursor:"pointer", fontFamily:"inherit", fontSize:13, fontWeight:700 }}>
+                Créer
+              </button>
+              <button onClick={() => { setShowNewFolder(false); setNewFolderName(""); }}
+                style={{ background:"transparent", border:"1px solid #2a3040", borderRadius:6, padding:"8px 12px",
+                  color:"#8a9bb0", cursor:"pointer", fontFamily:"inherit", fontSize:13 }}>
+                Annuler
+              </button>
+            </div>
+          )}
+
+          {/* Drop zone hint */}
+          {dragging && (
+            <div style={{ position:"fixed", inset:0, zIndex:100, background:"rgba(14,17,23,0.85)",
+              border:"2px dashed #c8a96e", display:"flex", alignItems:"center", justifyContent:"center",
+              flexDirection:"column", gap:12, pointerEvents:"none" }}>
+              <div style={{ fontSize:40, color:"#c8a96e" }}>{ICONS.upload}</div>
+              <div style={{ fontSize:18, color:"#c8a96e", letterSpacing:2 }}>Déposer les fichiers ici</div>
+            </div>
+          )}
+
+          {/* Empty state */}
+          {sortedItems.length === 0 && (
+            <div style={{ textAlign:"center", padding:"80px 20px", color:"#3a4050" }}>
+              <div style={{ fontSize:48, marginBottom:16, opacity:.4 }}>
+                <svg width="64" height="64" viewBox="0 0 64 64" fill="none" style={{ margin:"0 auto" }}>
+                  <rect x="4" y="16" width="56" height="40" rx="4" stroke="#c8a96e" strokeWidth="2" fill="none" opacity=".3"/>
+                  <path d="M4 24h56" stroke="#c8a96e" strokeWidth="2" opacity=".3"/>
+                  <path d="M20 8h10l4 8H4l4-8h10l2-2h-2" stroke="#c8a96e" strokeWidth="2" fill="none" opacity=".3"/>
+                </svg>
+              </div>
+              <div style={{ fontSize:15, color:"#4a5568", marginBottom:8 }}>Ce dossier est vide</div>
+              <div style={{ fontSize:12, color:"#3a4050" }}>Glissez-déposez ou cliquez sur "Importer"</div>
+            </div>
+          )}
+
+          {/* Grid view */}
+          {view === "grid" && sortedItems.length > 0 && (
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(160px, 1fr))", gap:12 }}>
+              {sortedItems.map(item => (
+                <div key={item.id}
+                  style={{ background:"#141820", border:"1px solid #1e2330", borderRadius:10, padding:"16px 12px",
+                    cursor: item.type === "folder" ? "pointer" : "default",
+                    transition:"border-color .15s, background .15s", position:"relative" }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = "#c8a96e"; e.currentTarget.style.background = "#1a1f2e"; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = "#1e2330"; e.currentTarget.style.background = "#141820"; }}
+                  onClick={() => item.type === "folder" && setPath([...path, item.id])}
+                >
+                  <div style={{ display:"flex", justifyContent:"flex-end", position:"absolute", top:8, right:8, gap:4 }}>
+                    {item.type === "file" && (
+                      <button onClick={e => { e.stopPropagation(); downloadFile(item); }}
+                        style={{ background:"transparent", border:"none", color:"#5a6880", cursor:"pointer", padding:4, borderRadius:4 }}
+                        title="Télécharger">
+                        {ICONS.download}
+                      </button>
+                    )}
+                    <button onClick={e => { e.stopPropagation(); deleteItem(item.id); }}
+                      style={{ background:"transparent", border:"none", color:"#5a6880", cursor:"pointer", padding:4, borderRadius:4 }}
+                      title="Supprimer">
+                      {ICONS.trash}
+                    </button>
+                  </div>
+                  <div style={{ color: item.type === "folder" ? "#c8a96e" : "#8a9bb0", marginBottom:10, fontSize:32 }}>
+                    {item.type === "folder" ? ICONS.folder : getFileIcon(item.name)}
+                  </div>
+                  <div style={{ fontSize:12, color:"#c8d0d8", fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                    {item.name}
+                  </div>
+                  <div style={{ fontSize:10, color:"#3a4050", marginTop:4 }}>
+                    {item.type === "folder"
+                      ? `${(item.children||[]).length} élément(s)`
+                      : formatSize(item.size)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* List view */}
+          {view === "list" && sortedItems.length > 0 && (
+            <div style={{ border:"1px solid #1e2330", borderRadius:10, overflow:"hidden" }}>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 120px 120px 80px",
+                padding:"10px 16px", background:"#0b0e14", fontSize:11, color:"#3a4050", letterSpacing:1, textTransform:"uppercase" }}>
+                <span>Nom</span><span>Taille</span><span>Date</span><span style={{ textAlign:"right" }}>Actions</span>
+              </div>
+              {sortedItems.map((item, i) => (
+                <div key={item.id}
+                  style={{ display:"grid", gridTemplateColumns:"1fr 120px 120px 80px",
+                    padding:"12px 16px", borderTop: i > 0 ? "1px solid #1a1f2a" : "none",
+                    background:"#141820", alignItems:"center",
+                    cursor: item.type === "folder" ? "pointer" : "default" }}
+                  onMouseEnter={e => e.currentTarget.style.background = "#1a1f2e"}
+                  onMouseLeave={e => e.currentTarget.style.background = "#141820"}
+                  onClick={() => item.type === "folder" && setPath([...path, item.id])}
+                >
+                  <div style={{ display:"flex", alignItems:"center", gap:10, minWidth:0 }}>
+                    <span style={{ color: item.type === "folder" ? "#c8a96e" : "#8a9bb0", flexShrink:0 }}>
+                      {item.type === "folder" ? ICONS.folder : getFileIcon(item.name)}
+                    </span>
+                    <span style={{ fontSize:13, color:"#c8d0d8", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                      {item.name}
+                    </span>
+                  </div>
+                  <span style={{ fontSize:12, color:"#5a6072" }}>
+                    {item.type === "folder" ? `${(item.children||[]).length} élément(s)` : formatSize(item.size)}
+                  </span>
+                  <span style={{ fontSize:12, color:"#5a6072" }}>{formatDate(item.createdAt)}</span>
+                  <div style={{ display:"flex", justifyContent:"flex-end", gap:4 }}>
+                    {item.type === "file" && (
+                      <button onClick={e => { e.stopPropagation(); downloadFile(item); }}
+                        style={{ background:"transparent", border:"none", color:"#5a6880", cursor:"pointer", padding:4 }}>
+                        {ICONS.download}
+                      </button>
+                    )}
+                    <button onClick={e => { e.stopPropagation(); deleteItem(item.id); }}
+                      style={{ background:"transparent", border:"none", color:"#5a6880", cursor:"pointer", padding:4 }}>
+                      {ICONS.trash}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Toast */}
+      {toast && (
+        <div style={{ position:"fixed", bottom:24, right:24, background: toast.type === "error" ? "#3d1a1a" : toast.type === "warn" ? "#2a2510" : "#0d2a1a",
+          border:`1px solid ${toast.type === "error" ? "#7a2020" : toast.type === "warn" ? "#6a5a10" : "#1a6a30"}`,
+          color: toast.type === "error" ? "#e88080" : toast.type === "warn" ? "#c8b060" : "#60c880",
+          borderRadius:8, padding:"10px 18px", fontSize:13, fontFamily:"'Courier New', monospace",
+          animation:"fadeIn .2s", zIndex:200 }}>
+          {toast.msg}
+        </div>
+      )}
+
+      <input ref={fileInputRef} type="file" multiple style={{ display:"none" }}
+        onChange={e => { uploadFiles(e.target.files); e.target.value = ""; }} />
+
+      <style>{`@keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }`}</style>
+    </div>
+  );
+}
