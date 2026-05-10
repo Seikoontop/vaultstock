@@ -1,133 +1,680 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PocketJob - L'entraide qui rapporte</title>
-    <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: #f8f9fa;
-            color: #333;
-        }
-        header {
-            background-color: #2c3e50;
-            color: white;
-            padding: 20px 50px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .logo {
-            font-size: 2em;
-            font-weight: bold;
-            color: #f1c40f;
-        }
-        .hero {
-            text-align: center;
-            padding: 80px 20px;
-            background-color: #ffffff;
-        }
-        .hero h1 {
-            font-size: 3em;
-            color: #2c3e50;
-            margin-bottom: 10px;
-        }
-        .hero p {
-            font-size: 1.3em;
-            color: #7f8c8d;
-            max-width: 700px;
-            margin: 0 auto 40px auto;
-        }
-        .btn {
-            display: inline-block;
-            padding: 15px 35px;
-            font-size: 1.2em;
-            text-decoration: none;
-            border-radius: 8px;
-            margin: 10px;
-            font-weight: bold;
-            transition: 0.3s;
-        }
-        .btn-demand {
-            background-color: #e74c3c;
-            color: white;
-            border: 2px solid #e74c3c;
-        }
-        .btn-demand:hover {
-            background-color: #c0392b;
-        }
-        .btn-earn {
-            background-color: #27ae60;
-            color: white;
-            border: 2px solid #27ae60;
-        }
-        .btn-earn:hover {
-            background-color: #2ecc71;
-        }
-        .features {
-            display: flex;
-            justify-content: center;
-            gap: 30px;
-            padding: 60px 20px;
-            flex-wrap: wrap;
-        }
-        .card {
-            background: white;
-            padding: 30px;
-            border-radius: 12px;
-            width: 280px;
-            text-align: center;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-        }
-        .card h3 {
-            color: #2980b9;
-        }
-        footer {
-            text-align: center;
-            padding: 20px;
-            background-color: #2c3e50;
-            color: white;
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GéoQuiz UE — 27 Pays &amp; Capitales</title>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#080f1e;--surface:#0f1829;--surface2:#162035;--surface3:#1d2a45;
+  --ocean:#0a1525;--eu:#1e3f7a;--eu-stroke:#2d5aa8;
+  --other:#111d32;--other-stroke:#162035;
+  --active:#f59e0b;--active-stroke:#fbbf24;
+  --correct:#10b981;--correct-stroke:#34d399;
+  --failed:#ef4444;--failed-stroke:#f87171;
+  --text:#dde6f5;--dim:#5c7aa3;--accent:#3b82f6;
+  --yellow:#f5c518;--r:10px;
+}
+body{background:var(--bg);color:var(--text);font-family:'Lexend',sans-serif;min-height:100vh;overflow:hidden}
+#app{display:flex;flex-direction:column;height:100vh}
+
+/* ── HEADER ── */
+header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 18px;background:var(--surface);
+  border-bottom:1px solid rgba(59,130,246,.18);flex-shrink:0;
+  gap:10px;
+}
+.logo{display:flex;align-items:center;gap:8px;font-size:1.1rem;font-weight:800;color:var(--yellow);letter-spacing:-.02em}
+.logo .eu-circle{
+  display:flex;align-items:center;justify-content:center;
+  width:30px;height:30px;border-radius:50%;background:#003399;
+  font-size:.65rem;letter-spacing:0;color:var(--yellow);
+}
+#mode-tag{
+  font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;
+  padding:4px 12px;border-radius:20px;background:rgba(59,130,246,.18);
+  color:#93c5fd;border:1px solid rgba(59,130,246,.3);
+}
+
+/* ── MAIN LAYOUT ── */
+main{display:flex;flex:1;overflow:hidden}
+
+/* ── MAP ── */
+#map-wrap{flex:1;position:relative;background:var(--ocean);overflow:hidden}
+#map{width:100%;height:100%}
+#loading{
+  position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:14px;color:var(--dim);font-size:.9rem;
+}
+.spin{
+  width:36px;height:36px;border:3px solid rgba(59,130,246,.2);
+  border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── MAP PATH STYLES ── */
+.ceu{fill:var(--eu);stroke:var(--eu-stroke);stroke-width:.6;transition:fill .35s,stroke .35s,filter .35s}
+.cother{fill:var(--other);stroke:var(--other-stroke);stroke-width:.3}
+.ceu.active{fill:var(--active);stroke:var(--active-stroke);stroke-width:1.5;filter:drop-shadow(0 0 10px rgba(245,158,11,.55))}
+.ceu.correct{fill:var(--correct);stroke:var(--correct-stroke);stroke-width:.8}
+.ceu.failed{fill:var(--failed);stroke:var(--failed-stroke);stroke-width:.8}
+.cap-ring{fill:none;stroke:var(--yellow);stroke-width:1.5;opacity:.5;animation:capring 1.8s ease-out infinite}
+.cap-dot{fill:var(--yellow);stroke:#fff;stroke-width:1.5;animation:capdot 1.8s ease-in-out infinite}
+@keyframes capdot{0%,100%{r:5}50%{r:7}}
+@keyframes capring{0%{r:5;opacity:.6}100%{r:18;opacity:0}}
+
+/* ── PANEL ── */
+#panel{
+  width:320px;min-width:280px;background:var(--surface);
+  border-left:1px solid rgba(59,130,246,.12);
+  display:flex;flex-direction:column;overflow-y:auto;gap:12px;padding:14px;
+}
+
+/* ── CARDS & PROGRESS ── */
+.card{
+  background:var(--surface2);border-radius:var(--r);padding:13px;
+  border:1px solid rgba(255,255,255,.05);
+}
+.label{font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--dim);margin-bottom:6px}
+.prog-wrap{background:var(--surface3);border-radius:999px;height:7px;overflow:hidden;margin-bottom:4px}
+.prog-bar{height:100%;background:var(--correct);border-radius:999px;transition:width .5s ease}
+.prog-text{font-size:.72rem;color:var(--dim);text-align:right}
+.scores{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.sc{background:var(--surface3);border-radius:8px;padding:10px;text-align:center}
+.sc .v{font-size:1.6rem;font-weight:800;line-height:1}
+.sc .l{font-size:.6rem;text-transform:uppercase;letter-spacing:.1em;color:var(--dim);margin-top:3px}
+.sc.ok .v{color:var(--correct)}.sc.ko .v{color:var(--failed)}
+
+/* ── QUESTION ── */
+.q-label{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--accent);margin-bottom:7px}
+.q-text{font-size:1rem;font-weight:500;line-height:1.45}
+.tries{display:flex;gap:5px;margin-top:10px}
+.try-dot{width:10px;height:10px;border-radius:50%;background:var(--dim);transition:background .25s}
+.try-dot.ok{background:var(--accent)}.try-dot.ko{background:var(--failed)}
+
+/* ── INPUT ── */
+.inp-row{display:flex;gap:7px}
+#inp{
+  flex:1;background:var(--surface3);border:1.5px solid rgba(59,130,246,.25);
+  border-radius:8px;padding:9px 13px;color:var(--text);
+  font-family:'Lexend',sans-serif;font-size:.95rem;outline:none;
+  transition:border-color .2s,background .2s;
+}
+#inp:focus{border-color:var(--accent)}
+#inp.ok{border-color:var(--correct);background:rgba(16,185,129,.1)}
+#inp.ko{border-color:var(--failed);background:rgba(239,68,68,.1)}
+#btn{
+  background:var(--accent);color:#fff;border:none;border-radius:8px;
+  padding:9px 15px;font-family:'Lexend',sans-serif;font-weight:700;
+  font-size:1rem;cursor:pointer;transition:background .2s,transform .1s;
+}
+#btn:hover{background:#2563eb}
+#btn:active{transform:scale(.96)}
+
+/* ── FEEDBACK ── */
+#fb{
+  border-radius:8px;padding:9px 12px;font-size:.82rem;font-weight:500;
+  display:none;animation:fbIn .2s ease;
+}
+@keyframes fbIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+#fb.ok{background:rgba(16,185,129,.15);color:#34d399;border:1px solid rgba(16,185,129,.3)}
+#fb.ko{background:rgba(239,68,68,.15);color:#f87171;border:1px solid rgba(239,68,68,.3)}
+#fb.inf{background:rgba(59,130,246,.15);color:#93c5fd;border:1px solid rgba(59,130,246,.3)}
+
+/* ── PHASE BANNER ── */
+.phase-banner{
+  background:linear-gradient(135deg,#112044,#162035);border-radius:var(--r);
+  padding:12px 14px;border:1px solid rgba(59,130,246,.25);text-align:center;
+}
+.phase-banner h2{font-size:.95rem;font-weight:700;margin-bottom:3px}
+.phase-banner p{font-size:.72rem;color:var(--dim)}
+
+/* ── BUTTONS ── */
+.btn{
+  width:100%;padding:10px;border:none;border-radius:8px;
+  font-family:'Lexend',sans-serif;font-weight:600;font-size:.88rem;cursor:pointer;
+  transition:all .2s;
+}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-primary:hover{background:#2563eb}
+.btn-secondary{background:var(--surface3);color:var(--dim);border:1px solid rgba(255,255,255,.08)}
+.btn-secondary:hover{color:var(--text);border-color:rgba(255,255,255,.15)}
+.btn-success{background:rgba(16,185,129,.2);color:var(--correct);border:1px solid rgba(16,185,129,.3)}
+.btn-success:hover{background:rgba(16,185,129,.3)}
+
+/* ── TRANSITION SCREEN ── */
+.transition-screen{text-align:center;padding:8px}
+.transition-screen .icon{font-size:2.8rem;margin-bottom:10px}
+.transition-screen h2{font-size:1.15rem;font-weight:700;margin-bottom:6px}
+.transition-screen p{font-size:.8rem;color:var(--dim);margin-bottom:16px;line-height:1.5}
+
+/* ── COMPLETION ── */
+.final-screen{text-align:center;padding:8px}
+.final-screen .trophy{font-size:3rem;margin-bottom:10px}
+.final-screen h2{font-size:1.2rem;font-weight:800;margin-bottom:6px}
+.final-screen p{font-size:.82rem;color:var(--dim);margin-bottom:16px}
+.final-scores{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px}
+
+/* ── MOBILE ── */
+@media(max-width:720px){
+  body,#app{overflow:auto;height:auto}
+  main{flex-direction:column}
+  #map-wrap{height:52vw;min-height:220px;flex:none}
+  #panel{width:100%;flex:none;border-left:none;border-top:1px solid rgba(59,130,246,.12)}
+}
+</style>
 </head>
 <body>
+<div id="app">
+  <header>
+    <div class="logo">
+      <div class="eu-circle">★★★</div>
+      GéoQuiz UE
+    </div>
+    <span id="mode-tag">Chargement…</span>
+  </header>
+  <main>
+    <div id="map-wrap">
+      <div id="loading"><div class="spin"></div>Chargement de la carte…</div>
+      <svg id="map"></svg>
+    </div>
+    <div id="panel"></div>
+  </main>
+</div>
 
-    <header>
-        <div class="logo">PocketJob</div>
-        <div>Le réseau des petits boulots</div>
-    </header>
+<script>
+/* ══════════════════════════════════════════════════
+   1. DATA
+══════════════════════════════════════════════════ */
+const EU = [
+  {id:40,  name:"Autriche",        cap:"Vienne",      coord:[16.37,48.21], altN:[],                      altC:[]},
+  {id:56,  name:"Belgique",        cap:"Bruxelles",   coord:[4.35,50.85],  altN:[],                      altC:[]},
+  {id:100, name:"Bulgarie",        cap:"Sofia",       coord:[23.32,42.70], altN:[],                      altC:[]},
+  {id:191, name:"Croatie",         cap:"Zagreb",      coord:[16.00,45.81], altN:[],                      altC:[]},
+  {id:196, name:"Chypre",          cap:"Nicosie",     coord:[33.37,35.17], altN:[],                      altC:["nicosia","nicosie"]},
+  {id:203, name:"Tchéquie",        cap:"Prague",      coord:[15.47,49.82], altN:["republique tcheque","republique tcheque","tcheque"], altC:[]},
+  {id:208, name:"Danemark",        cap:"Copenhague",  coord:[10.40,56.26], altN:[],                      altC:["kobenhavn","copenhagen"]},
+  {id:233, name:"Estonie",         cap:"Tallinn",     coord:[25.01,58.60], altN:[],                      altC:[]},
+  {id:246, name:"Finlande",        cap:"Helsinki",    coord:[25.75,63.00], altN:[],                      altC:[]},
+  {id:250, name:"France",          cap:"Paris",       coord:[2.35,46.23],  altN:[],                      altC:[]},
+  {id:276, name:"Allemagne",       cap:"Berlin",      coord:[10.45,51.17], altN:[],                      altC:[]},
+  {id:300, name:"Grèce",           cap:"Athènes",     coord:[22.00,39.07], altN:["grece"],               altC:["athenes","athens"]},
+  {id:348, name:"Hongrie",         cap:"Budapest",    coord:[19.50,47.16], altN:[],                      altC:[]},
+  {id:372, name:"Irlande",         cap:"Dublin",      coord:[-8.25,53.41], altN:[],                      altC:[]},
+  {id:380, name:"Italie",          cap:"Rome",        coord:[12.57,41.87], altN:[],                      altC:["roma"]},
+  {id:428, name:"Lettonie",        cap:"Riga",        coord:[24.60,56.88], altN:[],                      altC:[]},
+  {id:440, name:"Lituanie",        cap:"Vilnius",     coord:[23.88,55.17], altN:[],                      altC:[]},
+  {id:442, name:"Luxembourg",      cap:"Luxembourg",  coord:[6.13,49.82],  altN:[],                      altC:["luxembourg ville","luxembourg-ville"]},
+  {id:470, name:"Malte",           cap:"La Valette",  coord:[14.44,35.90], altN:[],                      altC:["valette","valletta","la valette"]},
+  {id:528, name:"Pays-Bas",        cap:"Amsterdam",   coord:[5.29,52.13],  altN:["pays bas","hollande"], altC:[]},
+  {id:616, name:"Pologne",         cap:"Varsovie",    coord:[19.15,51.92], altN:[],                      altC:["warsaw","warsovie"]},
+  {id:620, name:"Portugal",        cap:"Lisbonne",    coord:[-8.22,39.40], altN:[],                      altC:["lisbon","lisboa"]},
+  {id:642, name:"Roumanie",        cap:"Bucarest",    coord:[24.97,45.94], altN:[],                      altC:["bucharest"]},
+  {id:703, name:"Slovaquie",       cap:"Bratislava",  coord:[19.70,48.67], altN:[],                      altC:[]},
+  {id:705, name:"Slovénie",        cap:"Ljubljana",   coord:[14.82,46.12], altN:["slovenie"],            altC:[]},
+  {id:724, name:"Espagne",         cap:"Madrid",      coord:[-3.75,40.00], altN:[],                      altC:[]},
+  {id:752, name:"Suède",           cap:"Stockholm",   coord:[16.00,62.00], altN:["suede"],               altC:[]}
+];
+const EU_IDS = new Set(EU.map(c=>c.id));
+const EU_MAP = new Map(EU.map(c=>[c.id,c]));
 
-    <section class="hero">
-        <h1>Votre quartier a du talent. Vous aussi.</h1>
-        <p>Que vous ayez besoin d'un coup de main pour tondre la pelouse ou que vous cherchiez à gagner de l'argent de poche facilement, PocketJob est là pour vous, en toute sécurité.</p>
-        
-        <div class="buttons">
-            <a href="#" class="btn btn-demand">J'ai besoin d'aide 🛠️</a>
-            <a href="#" class="btn btn-earn">Je veux gagner de l'argent 💸</a>
-        </div>
-    </section>
+/* ══════════════════════════════════════════════════
+   2. STATE
+══════════════════════════════════════════════════ */
+const SKEY = 'geoquiz_ue_v3';
+let S = freshState();
 
-    <section class="features">
-        <div class="card">
-            <h3>100% Sécurisé</h3>
-            <p>Tous nos profils sont vérifiés par carte d'identité. L'argent est bloqué jusqu'à la fin de la mission.</p>
-        </div>
-        <div class="card">
-            <h3>Ultra Local</h3>
-            <p>Trouvez des missions ou de l'aide à moins de 5 kilomètres de chez vous. L'entraide commence à côté.</p>
-        </div>
-        <div class="card">
-            <h3>Administratif géré</h3>
-            <p>Concentrez-vous sur le job, on s'occupe de la paperasse et des déclarations automatiquement.</p>
-        </div>
-    </section>
+function freshState(){
+  return {
+    screen: 'countries_quiz', // countries_quiz | countries_done | capitals_quiz | done
+    queue: [],
+    retryQ: [],
+    current: null,
+    attempts: 0,
+    results: {},   // id → 'correct'|'failed'|'pending'
+    capRes: {},
+    correctCount: 0,
+    capCorrectCount: 0,
+    phase: 'main', // main | retry
+  };
+}
+function saveS(){ try{ localStorage.setItem(SKEY, JSON.stringify(S)); }catch(e){} }
+function loadS(){
+  try{
+    const d = localStorage.getItem(SKEY);
+    if(d){ const p=JSON.parse(d); if(p.screen) S=p; }
+  }catch(e){}
+}
+function resetS(){ S=freshState(); try{localStorage.removeItem(SKEY);}catch(e){} }
 
-    <footer>
-        <p>&copy; 2026 PocketJob - La startup qui monte 🚀</p>
-    </footer>
+/* ══════════════════════════════════════════════════
+   3. UTILS
+══════════════════════════════════════════════════ */
+function norm(s){
+  return s.toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/[-'']/g,' ').trim().replace(/\s+/g,' ');
+}
+function ok(input, country, mode){
+  const v = norm(input);
+  if(mode==='countries'){
+    return [norm(country.name),...country.altN.map(norm)].includes(v);
+  } else {
+    return [norm(country.cap),...country.altC.map(norm)].includes(v);
+  }
+}
+function shuffle(a){ const b=[...a]; for(let i=b.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[b[i],b[j]]=[b[j],b[i]];} return b; }
 
+/* ══════════════════════════════════════════════════
+   4. MAP (D3)
+══════════════════════════════════════════════════ */
+let svg, proj, pathFn, gEU, gDots, mapReady=false;
+
+function initMap(world){
+  document.getElementById('loading').style.display='none';
+  const wrap=document.getElementById('map-wrap');
+  const W=wrap.clientWidth, H=wrap.clientHeight;
+
+  svg = d3.select('#map').attr('width',W).attr('height',H);
+
+  const all = topojson.feature(world, world.objects.countries);
+  const euF = all.features.filter(f=>EU_IDS.has(+f.id));
+  const otF = all.features.filter(f=>!EU_IDS.has(+f.id));
+
+  // Use fixed bounding box to avoid overseas territories distorting the view
+  const bounds={type:'Feature',geometry:{type:'Polygon',coordinates:[[
+    [-13,34],[44,34],[44,72],[-13,72],[-13,34]
+  ]]}};
+
+  proj = d3.geoMercator().fitExtent([[20,15],[W-20,H-15]], bounds);
+  pathFn = d3.geoPath().projection(proj);
+
+  // Ocean
+  svg.append('rect').attr('width',W).attr('height',H).attr('fill','var(--ocean)');
+
+  // Graticule
+  svg.append('path')
+    .datum(d3.geoGraticule()())
+    .attr('fill','none').attr('stroke','rgba(255,255,255,.035)').attr('stroke-width',.5)
+    .attr('d',pathFn);
+
+  // Non-EU countries
+  svg.append('g').selectAll('path').data(otF).enter().append('path')
+    .attr('class','cother').attr('d',pathFn);
+
+  // EU countries
+  gEU = svg.append('g');
+  gEU.selectAll('path').data(euF).enter().append('path')
+    .attr('class','ceu').attr('id',d=>'c'+d.id).attr('d',pathFn);
+
+  // Small country markers (for countries that may not render visibly)
+  const smallIds = new Set([442, 470]); // Luxembourg & Malta
+  const gSmall = svg.append('g');
+  EU.filter(c=>smallIds.has(c.id)).forEach(c=>{
+    const [x,y]=proj(c.coord);
+    gSmall.append('circle').attr('cx',x).attr('cy',y).attr('r',6)
+      .attr('id','sm'+c.id).attr('fill','var(--eu)').attr('stroke','var(--eu-stroke)').attr('stroke-width',1)
+      .style('display','none');
+  });
+
+  // Check which EU features actually have visible paths
+  euF.forEach(f=>{
+    const area = pathFn.area(f);
+    if(area<2){
+      const el=document.getElementById('sm'+f.id);
+      if(el) el.style.display='block';
+    }
+  });
+
+  gDots = svg.append('g');
+
+  // Resize
+  window.addEventListener('resize',()=>{
+    const W2=wrap.clientWidth, H2=wrap.clientHeight;
+    svg.attr('width',W2).attr('height',H2);
+    proj.fitExtent([[20,15],[W2-20,H2-15]],bounds);
+    pathFn=d3.geoPath().projection(proj);
+    svg.selectAll('path').attr('d',pathFn);
+    // reposition small country markers
+    EU.filter(c=>smallIds.has(c.id)).forEach(c=>{
+      const [x,y]=proj(c.coord);
+      const el=document.getElementById('sm'+c.id);
+      if(el){el.setAttribute('cx',x);el.setAttribute('cy',y);}
+    });
+    refreshDot();
+  });
+
+  mapReady=true;
+  colorMap();
+}
+
+function setClass(id, extra){
+  const el=document.getElementById('c'+id);
+  if(el) el.className.baseVal='ceu'+(extra?' '+extra:'');
+  const sm=document.getElementById('sm'+id);
+  if(sm){
+    sm.style.fill = extra==='active'?'var(--active)':extra==='correct'?'var(--correct)':extra==='failed'?'var(--failed)':'var(--eu)';
+    sm.style.stroke = extra==='active'?'var(--active-stroke)':extra==='correct'?'var(--correct-stroke)':extra==='failed'?'var(--failed-stroke)':'var(--eu-stroke)';
+  }
+}
+
+function colorMap(){
+  if(!mapReady) return;
+  const mode = (S.screen==='capitals_quiz'||S.screen==='done')?'cap':'ctr';
+  EU.forEach(c=>{
+    const isActive = S.current && S.current.id===c.id;
+    const res = mode==='ctr' ? S.results[c.id] : S.capRes[c.id];
+    let cls = '';
+    if(isActive && res!=='correct') cls='active';
+    else if(res==='correct') cls='correct';
+    else if(res==='failed') cls='failed';
+    setClass(c.id, cls);
+  });
+}
+
+function showDot(country){
+  gDots.selectAll('*').remove();
+  if(!country) return;
+  const [x,y]=proj(country.coord);
+  gDots.append('circle').attr('class','cap-ring').attr('cx',x).attr('cy',y).attr('r',5);
+  gDots.append('circle').attr('class','cap-dot').attr('cx',x).attr('cy',y).attr('r',5);
+}
+function hideDot(){ gDots.selectAll('*').remove(); }
+function refreshDot(){
+  if(S.screen==='capitals_quiz' && S.current) showDot(S.current);
+}
+
+/* ══════════════════════════════════════════════════
+   5. QUIZ ENGINE
+══════════════════════════════════════════════════ */
+function startCountries(){
+  S.screen='countries_quiz'; S.phase='main';
+  S.queue=shuffle(EU.map(c=>c.id));
+  S.retryQ=[]; S.results={}; S.correctCount=0; S.current=null;
+  nextQ();
+}
+function startCapitals(){
+  S.screen='capitals_quiz'; S.phase='main';
+  S.queue=shuffle(EU.map(c=>c.id));
+  S.retryQ=[]; S.capRes={}; S.capCorrectCount=0; S.current=null;
+  colorMap(); hideDot();
+  nextQ();
+}
+
+function nextQ(){
+  if(S.queue.length===0){
+    if(S.retryQ.length>0){
+      S.phase='retry';
+      S.queue=shuffle([...S.retryQ]);
+      S.retryQ=[];
+      // un-mark failed ones as pending for visual
+      S.queue.forEach(id=>{
+        if(S.screen==='countries_quiz') S.results[id]='pending';
+        else S.capRes[id]='pending';
+      });
+    } else {
+      modeComplete();
+      return;
+    }
+  }
+  const id=S.queue.shift();
+  S.current=EU_MAP.get(id);
+  S.attempts=0;
+  if(S.screen==='countries_quiz') S.results[id]='pending';
+  else S.capRes[id]='pending';
+  colorMap();
+  if(S.screen==='capitals_quiz') showDot(S.current);
+  else hideDot();
+  renderPanel();
+  saveS();
+  setTimeout(()=>{ const i=document.getElementById('inp'); if(i) i.focus(); },80);
+}
+
+function modeComplete(){
+  S.current=null; hideDot(); colorMap();
+  if(S.screen==='countries_quiz'){
+    S.screen='countries_done';
+  } else {
+    S.screen='done';
+  }
+  renderPanel();
+  saveS();
+}
+
+function submit(){
+  const inp=document.getElementById('inp');
+  if(!inp||!S.current) return;
+  const val=inp.value.trim();
+  if(!val) return;
+  const mode=S.screen==='countries_quiz'?'countries':'capitals';
+  const correct=ok(val, S.current, mode);
+
+  if(correct){
+    if(mode==='countries'){ S.results[S.current.id]='correct'; S.correctCount++; }
+    else { S.capRes[S.current.id]='correct'; S.capCorrectCount++; }
+    colorMap();
+    inp.value=''; inp.className='ok';
+    showFB('ok',`✓ Correct ! "${mode==='countries'?S.current.name:S.current.cap}" 🎉`);
+    disableInput(true);
+    setTimeout(()=>{ inp.className=''; disableInput(false); nextQ(); },1300);
+  } else {
+    S.attempts++;
+    inp.value=''; inp.className='ko';
+    setTimeout(()=>{ inp.className=''; },500);
+    if(S.attempts>=3){
+      const ans=mode==='countries'?S.current.name:S.current.cap;
+      if(mode==='countries'){ S.results[S.current.id]='failed'; S.retryQ.push(S.current.id); }
+      else { S.capRes[S.current.id]='failed'; S.retryQ.push(S.current.id); }
+      colorMap();
+      showFB('ko',`✗ Réponse : <strong>${ans}</strong>`);
+      disableInput(true);
+      setTimeout(()=>{ disableInput(false); nextQ(); },2200);
+    } else {
+      const rem=3-S.attempts;
+      showFB('ko',`✗ Mauvaise réponse — ${rem} tentative${rem>1?'s':''} restante${rem>1?'s':''}`);
+      updateDots();
+    }
+  }
+}
+
+function disableInput(d){
+  const inp=document.getElementById('inp'); if(inp) inp.disabled=d;
+  const btn=document.getElementById('btn'); if(btn) btn.disabled=d;
+}
+function showFB(type, html){
+  const fb=document.getElementById('fb'); if(!fb) return;
+  fb.className=''+type; fb.innerHTML=html; fb.style.display='block';
+}
+function updateDots(){
+  const c=document.getElementById('tries'); if(!c) return;
+  c.innerHTML=Array.from({length:3},(_,i)=>
+    `<div class="try-dot ${i<S.attempts?'ko':'ok'}"></div>`
+  ).join('');
+}
+
+/* ══════════════════════════════════════════════════
+   6. RENDER
+══════════════════════════════════════════════════ */
+function renderPanel(){
+  const panel=document.getElementById('panel');
+  const tag=document.getElementById('mode-tag');
+
+  if(S.screen==='loading'){
+    tag.textContent='Chargement…';
+    panel.innerHTML='';
+    return;
+  }
+
+  if(S.screen==='countries_quiz'){
+    tag.textContent='🗺️ Mode Pays';
+    renderQuiz(panel,'countries');
+  } else if(S.screen==='countries_done'){
+    tag.textContent='✅ Pays terminés !';
+    renderCountriesDone(panel);
+  } else if(S.screen==='capitals_quiz'){
+    tag.textContent='🏛️ Mode Capitales';
+    renderQuiz(panel,'capitals');
+  } else if(S.screen==='done'){
+    tag.textContent='🏆 Terminé !';
+    renderFinal(panel);
+  }
+}
+
+function renderQuiz(panel, mode){
+  const isCountries = mode==='countries';
+  const res = isCountries?S.results:S.capRes;
+  const cnt = isCountries?S.correctCount:S.capCorrectCount;
+  const failedN = S.retryQ.length + Object.values(res).filter(v=>v==='failed').length;
+  const pct = Math.round(cnt/27*100);
+  const phase = S.phase==='retry' ? '🔄 Reprise des erreurs' :
+                isCountries ? '🌍 Identifiez les 27 pays' : '🏛️ Retrouvez les 27 capitales';
+  const desc = isCountries
+    ? 'Le pays surligné en jaune sur la carte — quel est son nom ?'
+    : 'Quel est le nom de la capitale du pays indiqué par le point ?';
+
+  panel.innerHTML=`
+<div class="phase-banner">
+  <h2>${phase}</h2>
+  <p>${desc}</p>
+</div>
+
+<div class="card">
+  <div class="label">Progression — ${cnt}/27</div>
+  <div class="prog-wrap"><div class="prog-bar" style="width:${pct}%"></div></div>
+  <div class="prog-text">${pct}%</div>
+</div>
+
+<div class="scores">
+  <div class="sc ok"><div class="v">${cnt}</div><div class="l">Corrects</div></div>
+  <div class="sc ko"><div class="v">${failedN}</div><div class="l">À revoir</div></div>
+</div>
+
+<div class="card">
+  <div class="q-label">Question</div>
+  <div class="q-text">${isCountries?'Quel est le nom de ce pays ?':'Quelle est la capitale de ce pays ?'}</div>
+  <div class="tries" id="tries">
+    ${Array.from({length:3},(_,i)=>`<div class="try-dot ${i<S.attempts?'ko':'ok'}"></div>`).join('')}
+  </div>
+</div>
+
+<div class="inp-row">
+  <input id="inp" type="text" placeholder="Votre réponse…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+  <button id="btn" onclick="submit()">↵</button>
+</div>
+
+<div id="fb"></div>
+
+<div style="margin-top:auto">
+  <button class="btn btn-secondary" onclick="confirmReset()">↺ Recommencer depuis le début</button>
+</div>`;
+
+  const inp=document.getElementById('inp');
+  if(inp) inp.addEventListener('keydown',e=>{ if(e.key==='Enter') submit(); });
+}
+
+function renderCountriesDone(panel){
+  const perfect = Object.values(S.results).every(v=>v==='correct');
+  panel.innerHTML=`
+<div class="transition-screen">
+  <div class="icon">🎉</div>
+  <h2>Pays terminés !</h2>
+  <p>Vous avez identifié les <strong>27 pays de l'UE</strong>.<br>
+     <strong style="color:var(--correct)">${S.correctCount}</strong> corrects
+     ${S.correctCount<27?`· <strong style="color:var(--failed)">${27-S.correctCount}</strong> avec aide`:'· Score parfait !'}</p>
+</div>
+
+<div class="scores" style="margin-bottom:8px">
+  <div class="sc ok"><div class="v">${S.correctCount}</div><div class="l">Corrects</div></div>
+  <div class="sc ko"><div class="v">${27-S.correctCount}</div><div class="l">Avec aide</div></div>
+</div>
+
+<button class="btn btn-success" onclick="startCapitals()" style="margin-bottom:8px">
+  🏛️ Commencer le quiz des capitales →
+</button>
+<button class="btn btn-secondary" onclick="startCountries()">
+  ↺ Rejouer les pays
+</button>`;
+}
+
+function renderFinal(panel){
+  const totalScore = S.correctCount + S.capCorrectCount;
+  panel.innerHTML=`
+<div class="final-screen">
+  <div class="trophy">🏆</div>
+  <h2>Félicitations !</h2>
+  <p>Vous avez complété les deux exercices sur les 27 pays et capitales de l'Union européenne !</p>
+</div>
+
+<div class="final-scores">
+  <div class="sc ok"><div class="v">${S.correctCount}</div><div class="l">Pays corrects</div></div>
+  <div class="sc ok"><div class="v">${S.capCorrectCount}</div><div class="l">Capitales</div></div>
+</div>
+
+<div class="card" style="text-align:center;margin-bottom:12px">
+  <div class="label">Score total</div>
+  <div style="font-size:2rem;font-weight:800;color:var(--yellow)">${totalScore}<span style="font-size:1rem;font-weight:400;color:var(--dim)">/54</span></div>
+</div>
+
+<button class="btn btn-primary" onclick="fullRestart()" style="margin-bottom:8px">
+  🔄 Recommencer tout
+</button>
+<button class="btn btn-secondary" onclick="startCapitals()">
+  ↺ Rejouer les capitales
+</button>`;
+}
+
+function confirmReset(){
+  if(confirm('Recommencer depuis le début ? Votre progression sera perdue.')){
+    fullRestart();
+  }
+}
+function fullRestart(){
+  resetS();
+  S.screen='loading';
+  renderPanel();
+  setTimeout(()=>{ startCountries(); },100);
+}
+
+/* ══════════════════════════════════════════════════
+   7. INIT
+══════════════════════════════════════════════════ */
+(function init(){
+  loadS();
+
+  // If was mid-quiz, try to restore (map will re-init on load)
+  // Either way we need to load the map data first
+  const mapDataUrl = 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json';
+
+  d3.json(mapDataUrl).then(world=>{
+    initMap(world);
+
+    // Resume or start fresh
+    if(S.screen && S.screen!=='loading'){
+      colorMap();
+      if(S.screen==='capitals_quiz' && S.current) showDot(S.current);
+      renderPanel();
+      if(S.screen==='countries_quiz'||S.screen==='capitals_quiz'){
+        // re-focus input
+        setTimeout(()=>{ const i=document.getElementById('inp'); if(i) i.focus(); },100);
+      }
+    } else {
+      startCountries();
+    }
+  }).catch(err=>{
+    console.error('Failed to load map data:', err);
+    document.getElementById('loading').innerHTML=`
+      <div style="color:var(--failed);text-align:center;padding:20px">
+        <div style="font-size:2rem;margin-bottom:10px">⚠️</div>
+        <div>Impossible de charger la carte.</div>
+        <div style="font-size:.8rem;color:var(--dim);margin-top:6px">Vérifiez votre connexion internet.</div>
+      </div>`;
+  });
+})();
+</script>
 </body>
 </html>
